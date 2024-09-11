@@ -35,9 +35,18 @@ export default function ChatInterface({ setCart, setBudget }) {
         },
       });
 
-      const suggestedProducts = JSON.parse(
-        geminiResponse.data.candidates[0].content.parts[0].text
-      );
+      let suggestedProducts;
+      try {
+        const responseText =
+          geminiResponse.data.candidates[0].content.parts[0].text;
+        const jsonStartIndex = responseText.indexOf("[");
+        const jsonEndIndex = responseText.lastIndexOf("]") + 1;
+        const jsonString = responseText.substring(jsonStartIndex, jsonEndIndex);
+        suggestedProducts = JSON.parse(jsonString);
+      } catch (parseError) {
+        console.error("Error parsing Gemini response:", parseError);
+        throw new Error("Failed to parse product suggestions");
+      }
 
       // Calculate budget per item
       const budgetPerItem = totalBudget / suggestedProducts.length;
@@ -46,20 +55,25 @@ export default function ChatInterface({ setCart, setBudget }) {
       const cartItems = [];
       const notFoundItems = [];
       for (const product of suggestedProducts) {
-        const walmartResponse = await axios.post("/api/walmart", {
-          title: product.item,
-          budget: budgetPerItem,
-        });
-
-        if (
-          walmartResponse.data.items &&
-          walmartResponse.data.items.length > 0
-        ) {
-          cartItems.push({
-            ...walmartResponse.data.items[0],
-            category: product.category,
+        try {
+          const walmartResponse = await axios.post("/api/walmart", {
+            title: product.item,
+            budget: budgetPerItem,
           });
-        } else {
+
+          if (
+            walmartResponse.data.items &&
+            walmartResponse.data.items.length > 0
+          ) {
+            cartItems.push({
+              ...walmartResponse.data.items[0],
+              category: product.category,
+            });
+          } else {
+            notFoundItems.push(product);
+          }
+        } catch (walmartError) {
+          console.error("Error querying Walmart API:", walmartError);
           notFoundItems.push(product);
         }
       }
